@@ -3,88 +3,76 @@ package main // import "ws"
 import (
 	"fmt"
 	"net/http"
+	"os/exec"
+	"runtime"
 
-	wsgor "github.com/gorilla/websocket"
-	"github.com/labstack/echo"
-	"github.com/labstack/echo/middleware"
-	wsbase "golang.org/x/net/websocket"
+	_ "embed"
+
+	ws "golang.org/x/net/websocket"
 )
+
+//go:embed html/index.html
+var html string
 
 var (
-	upgrader = wsgor.Upgrader{}
+	Address      string = "localhost"
+	Port         string = "1323"
+	HttpProtocol string = "http"
 )
 
-func wsBasic(c echo.Context) error {
-	wsbase.Handler(func(ws *wsbase.Conn) {
-		defer ws.Close()
+func wsController(w http.ResponseWriter, req *http.Request) {
+	ws.Handler(func(conn *ws.Conn) {
+		defer conn.Close()
+
+		handler := ws.Message
 
 		fin := false
-		for fin == false {
-			// Write
-			err := wsbase.Message.Send(ws, "Hello, Client! I'm net/websocket")
-			if err != nil {
-				c.Logger().Error(err)
-				fin = true
-			}
-
+		for !fin {
 			// Read
-			msg := ""
-			err = wsbase.Message.Receive(ws, &msg)
+			message := ""
+			err := handler.Receive(conn, &message)
 			if err != nil {
-				c.Logger().Error(err)
+				fmt.Println("Receive error:", err)
 				fin = true
 			}
 
-			// Print or Do Something
-			if len(msg) > 0 {
-				fmt.Printf("%s\n", msg)
+			// Print received message
+			if len(message) > 0 {
+				fmt.Printf("%s\n", message)
+			}
+
+			// Write
+			response := "Hello, Client! You sent me: " + message
+			err = handler.Send(conn, response)
+			if err != nil {
+				fmt.Println("Send error:", err)
+				fin = true
 			}
 		}
-	}).ServeHTTP(c.Response(), c.Request())
-	return nil
-}
-
-func wsGorilla(c echo.Context) error {
-	upgrader.CheckOrigin = func(r *http.Request) bool { return true }
-	ws, err := upgrader.Upgrade(c.Response(), c.Request(), nil)
-	if err != nil {
-		return err
-	}
-	defer ws.Close()
-
-	fin := false
-	for fin == false {
-		// Write
-		err := ws.WriteMessage(wsgor.TextMessage, []byte("Hello, Client! I'm gorilla/websocket"))
-		if err != nil {
-			c.Logger().Error(err)
-			fin = true
-		}
-
-		// Read
-		_, msg, err := ws.ReadMessage()
-		if err != nil {
-			c.Logger().Error(err)
-			fin = true
-		}
-
-		// Print or Do Something
-		if len(msg) > 0 {
-			fmt.Printf("%s\n", msg)
-		}
-	}
-
-	return nil
+	}).ServeHTTP(w, req)
 }
 
 func main() {
-	e := echo.New()
-	// e.Use(middleware.Logger())
-	e.Use(middleware.Recover())
-	// e.Static("/", "./index.html")
+	listenURI := Address + ":" + Port
+	uri := HttpProtocol + "://" + Address + ":" + Port
 
-	e.GET("/ws", wsBasic)
-	e.GET("/ws-gorilla", wsGorilla)
+	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, html)
+	})
+	http.HandleFunc("/ws", wsController)
 
-	e.Logger.Fatal(e.Start(":1323"))
+	fmt.Printf("Server is running at %s\n", uri)
+
+	switch os := runtime.GOOS; os {
+	case "windows":
+		exec.Command("rundll32", "url.dll,FileProtocolHandler", uri).Start()
+	case "linux":
+		exec.Command("xdg-open", uri).Start()
+	case "darwin":
+		exec.Command("open", uri).Start()
+	default:
+		fmt.Printf("%s: unsupported platform", os)
+	}
+
+	http.ListenAndServe(listenURI, nil)
 }

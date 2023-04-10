@@ -1,0 +1,48 @@
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <title>WebSocket</title>
+</head>
+
+<body>
+    <textarea id="inputs">Hello, Server!</textarea>
+    <button id="send" onclick="send()">Send</button>
+    <p id="outputs"></p>
+</body>
+
+<script>
+    const loc = window.location
+    let uri = 'ws:'
+
+    if (loc.protocol === 'https:') uri = 'wss:'
+
+    uri += '//' + "localhost" + ":1323"
+    uri += "/" + 'ws'
+
+    ws = new WebSocket(uri)
+
+    ws.onopen = function () {
+        console.log('Connected')
+    }
+
+    ws.onmessage = function (evt) {
+        var out = document.getElementById('outputs')
+        out.innerHTML += evt.data + '<br>'
+        // ws.close()
+    }
+
+    function send() {
+        const input = document.querySelector("#inputs")
+        if (input.value === '') {
+            return
+        }
+
+        ws.send(input.value)
+
+        input.value = ''
+        input.focus()
+    }
+</script>
+
+</html>
